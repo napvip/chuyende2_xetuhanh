@@ -64,7 +64,8 @@ class_names = model.names
 
 # --- KHỞI TẠO CAMERA ---
 picam2 = Picamera2()
-config = picam2.create_preview_configuration(main={"size": (640, 480)})
+# Thay đổi cấu hình camera để sử dụng định dạng RGB thay vì XBGR
+config = picam2.create_preview_configuration(main={"size": (640, 480), "format": "RGB888"})
 picam2.configure(config)
 picam2.start()
 time.sleep(1)  # Cho camera khởi động
@@ -82,6 +83,10 @@ try:
     while True:
         # Chụp ảnh từ camera
         frame = picam2.capture_array()
+        
+        # Đảm bảo frame có đúng 3 kênh màu (RGB)
+        if frame.shape[2] == 4:  # Nếu là 4 kênh (RGBA/BGRA)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
         
         # Phát hiện đối tượng
         results = model(frame, conf=CONFIDENCE_THRESHOLD)

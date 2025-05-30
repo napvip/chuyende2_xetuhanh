@@ -10,7 +10,6 @@ import numpy as np
 GPIO.setmode(GPIO.BOARD)
 GPIO.setwarnings(False)
 
-# Chân điều khiển motor (BOARD numbering)
 IN1 = 11  # Trái
 IN2 = 13
 IN3 = 15  # Phải
@@ -43,105 +42,110 @@ def forward():
 
 def turn_left():
     GPIO.output(IN1, GPIO.LOW)
-    GPIO.output(IN2, GPIO.HIGH)   # Trái lùi
+    GPIO.output(IN2, GPIO.HIGH)
     GPIO.output(IN3, GPIO.HIGH)
-    GPIO.output(IN4, GPIO.LOW)    # Phải tiến
+    GPIO.output(IN4, GPIO.LOW)
+    time.sleep(1.0)
 
 def turn_right():
     GPIO.output(IN1, GPIO.HIGH)
-    GPIO.output(IN2, GPIO.LOW)    # Trái tiến
+    GPIO.output(IN2, GPIO.LOW)
     GPIO.output(IN3, GPIO.LOW)
-    GPIO.output(IN4, GPIO.HIGH)   # Phải lùi
+    GPIO.output(IN4, GPIO.HIGH)
+    time.sleep(1.0)
 
-# --- TRẠNG THÁI VÀ TIMER ---
-is_stopped = False
-last_detection_time = 0
-stop_cooldown = 3  # giây để tránh detect liên tục
+# --- TRẠNG THÁI ---
+current_mode = "idle"
+last_action_time = 0
+action_cooldown = 2  # giây
 
-# --- TẢI MODEL YOLO ---
-model = YOLO('/home/toan/xetuhanh/chuyende2_xetuhanh/best.pt')
+stop_detected = False
+last_stop_time = 0
+resume_after = 2  # giây dừng sau STOP
+
+# --- MÔ HÌNH YOLO ---
+model = YOLO('/home/vanbui262004/workspace/pios/best.pt')
 class_names = model.names
+colors = {i: (random.randint(50,255), random.randint(50,255), random.randint(50,255)) for i in class_names}
 
-# --- KHỞI TẠO CAMERA ---
+# --- CAMERA ---
 picam2 = Picamera2()
-# Thay đổi cấu hình camera để sử dụng định dạng RGB thay vì XBGR
-config = picam2.create_preview_configuration(main={"size": (640, 480), "format": "RGB888"})
+config = picam2.create_preview_configuration(main={"format": 'RGB888', "size": (640, 480)})
 picam2.configure(config)
 picam2.start()
-time.sleep(1)  # Cho camera khởi động
 
-# --- THIẾT LẬP THAM SỐ ---
-CONFIDENCE_THRESHOLD = 0.5  # Ngưỡng nhận diện
-STOP_CLASS_ID = 0  # ID của biển báo Stop trong model (thay đổi nếu cần)
-STOP_DURATION = 2  # Thời gian dừng (giây)
+# --- HÀNH ĐỘNG BIỂN BÁO ---
+def execute_action(label):
+    global current_mode, last_action_time, stop_detected, last_stop_time
+    now = time.time()
 
-# --- CHƯƠNG TRÌNH CHÍNH ---
+    if now - last_action_time < action_cooldown:
+        return
+
+    print(f"📸 Phát hiện biển báo: {label.upper()}")
+    last_action_time = now
+
+    if label == "stop":
+        stop_all()
+        current_mode = "stopped"
+        stop_detected = True
+        last_stop_time = now
+
+    elif label == "turn left":
+        turn_left()
+        forward()
+        current_mode = "forward"
+
+    elif label == "turn right":
+        turn_right()
+        forward()
+        current_mode = "forward"
+
+# --- VÒNG LẶP CHÍNH ---
 try:
-    print("Xe tự hành đã khởi động...")
-    forward()  # Bắt đầu di chuyển
-    
     while True:
-        # Chụp ảnh từ camera
-        frame = picam2.capture_array()
-        
-        # Đảm bảo frame có đúng 3 kênh màu (RGB)
-        if frame.shape[2] == 4:  # Nếu là 4 kênh (RGBA/BGRA)
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-        
-        # Phát hiện đối tượng
-        results = model(frame, conf=CONFIDENCE_THRESHOLD)
-        
-        # Xử lý kết quả
-        detected_stop = False
-        current_time = time.time()
-        
-        # Kiểm tra các đối tượng phát hiện được
-        for r in results:
-            boxes = r.boxes
-            for box in boxes:
-                cls_id = int(box.cls[0])
-                confidence = float(box.conf[0])
-                
-                # Nếu phát hiện biển báo Stop
-                if cls_id == STOP_CLASS_ID and confidence > CONFIDENCE_THRESHOLD:
-                    detected_stop = True
-                    
-                    # Vẽ hộp và nhãn
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
-                    cv2.putText(frame, f"Stop {confidence:.2f}", (x1, y1 - 10), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-        
-        # Hiển thị khung hình (tùy chọn nếu có màn hình)
-        # cv2.imshow("Camera", frame)
-        # if cv2.waitKey(1) & 0xFF == ord('q'):
-        #     break
-        
-        # Xử lý dừng khi phát hiện biển báo Stop
-        if detected_stop and not is_stopped and (current_time - last_detection_time) > stop_cooldown:
-            print("Đã phát hiện biển báo Stop! Dừng lại...")
-            stop_all()
-            is_stopped = True
-            last_detection_time = current_time
-            
-            # Chờ một khoảng thời gian rồi đi tiếp
-            time.sleep(STOP_DURATION)
-            print("Tiếp tục di chuyển...")
+        if current_mode == "idle":
             forward()
-            is_stopped = False
-        
-        # Tránh CPU quá tải
-        time.sleep(0.05)
+            current_mode = "forward"
+
+        frame = picam2.capture_array()  # Ảnh đã ở định dạng RGB, không cần cvtColor
+
+        results = model.predict(source=frame, conf=0.5, iou=0.45, stream=True, verbose=False)
+
+        labels_seen = set()
+
+        for result in results:
+            for box in result.boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                cls_id = int(box.cls[0])
+                label_name = class_names[cls_id].lower()
+                labels_seen.add(label_name)
+
+                if label_name in ["stop", "turn left", "turn right"]:
+                    execute_action(label_name)
+
+                color = colors.get(cls_id, (0,255,0))
+                cv2.rectangle(frame, (x1,y1), (x2,y2), color, 2)
+                cv2.putText(frame, label_name, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+        # Nếu đã từng thấy STOP, mà sau thời gian resume thì tiếp tục đi thẳng
+        if stop_detected and ("stop" not in labels_seen) and (time.time() - last_stop_time > resume_after):
+            print("✅ Không còn biển STOP - Tiếp tục chạy thẳng")
+            forward()
+            current_mode = "forward"
+            stop_detected = False
+
+        cv2.imshow("Robot Vision", frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
 except KeyboardInterrupt:
-    print("Dừng chương trình...")
-except Exception as e:
-    print(f"Lỗi: {e}")
-finally:
-    # Dọn dẹp
-    stop_all()
-    pwmA.stop()
-    pwmB.stop()
-    GPIO.cleanup()
-    # cv2.destroyAllWindows()
-    print("Đã tắt xe an toàn.")
+    print("⛔ Dừng chương trình")
+
+# --- DỌN DẸP ---
+picam2.stop()
+cv2.destroyAllWindows()
+stop_all()
+pwmA.stop()
+pwmB.stop()
+GPIO.cleanup()

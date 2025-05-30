@@ -64,7 +64,7 @@ class_names = model.names
 
 # --- KHỞI TẠO CAMERA ---
 picam2 = Picamera2()
-config = picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (640, 480)})
+config = picam2.create_preview_configuration(main={"format": 'RGB888', "size": (640, 480)})
 picam2.configure(config)
 picam2.start()
 
@@ -90,40 +90,54 @@ try:
         # Capture frame từ camera
         frame = picam2.capture_array()
         
-        # Chạy YOLO detection
-        results = model.predict(source=frame, conf=0.6, iou=0.45, stream=True, verbose=False)
+        # Chuyển đổi từ 4 kênh sang 3 kênh nếu cần
+        if frame.shape[2] == 4:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+        elif frame.shape[2] == 3:
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         
-        stop_detected = False
+        try:
+            # Chạy YOLO detection
+            results = model.predict(source=frame, conf=0.6, iou=0.45, stream=True, verbose=False)
+            
+            stop_detected = False
+            
+            # Xử lý kết quả detection
+            for result in results:
+                if result.boxes is not None:
+                    for box in result.boxes:
+                        # Lấy thông tin bounding box
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        confidence = float(box.conf[0])
+                        cls_id = int(box.cls[0])
+                        label = class_names[cls_id].lower()
+                        
+                        # Kiểm tra nếu phát hiện biển "stop"
+                        if "stop" in label:
+                            stop_detected = True
+                            
+                            # Vẽ bounding box màu đỏ cho biển stop
+                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 3)
+                            cv2.putText(frame, f"STOP {confidence:.2f}", (x1, y1-10), 
+                                      cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                        else:
+                            # Vẽ bounding box màu xanh cho các object khác
+                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                            cv2.putText(frame, f"{label} {confidence:.2f}", (x1, y1-10), 
+                                      cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            
+            # Xử lý khi phát hiện biển stop
+            if stop_detected:
+                handle_stop_detection()
+            elif not is_stopped:
+                # Nếu không phát hiện stop và xe chưa dừng thì tiếp tục chạy
+                forward()
         
-        # Xử lý kết quả detection
-        for result in results:
-            for box in result.boxes:
-                # Lấy thông tin bounding box
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                confidence = float(box.conf[0])
-                cls_id = int(box.cls[0])
-                label = class_names[cls_id].lower()
-                
-                # Kiểm tra nếu phát hiện biển "stop"
-                if "stop" in label:
-                    stop_detected = True
-                    
-                    # Vẽ bounding box màu đỏ cho biển stop
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 3)
-                    cv2.putText(frame, f"STOP {confidence:.2f}", (x1, y1-10), 
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                else:
-                    # Vẽ bounding box màu xanh cho các object khác
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    cv2.putText(frame, f"{label} {confidence:.2f}", (x1, y1-10), 
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-        
-        # Xử lý khi phát hiện biển stop
-        if stop_detected:
-            handle_stop_detection()
-        elif not is_stopped:
-            # Nếu không phát hiện stop và xe chưa dừng thì tiếp tục chạy
-            forward()
+        except Exception as e:
+            print(f"⚠️ Lỗi khi chạy detection: {e}")
+            # Tiếp tục chạy xe nếu có lỗi detection
+            if not is_stopped:
+                forward()
         
         # Hiển thị trạng thái trên frame
         status_text = "STOPPED" if is_stopped else "RUNNING"

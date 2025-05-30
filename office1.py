@@ -15,7 +15,7 @@ IN2 = 24
 IN3 = 27  # Phải
 IN4 = 22
 ENA = 18  # PWM trái
-ENB = 33  # PWM phải
+ENB = 13  # PWM phải
 
 motor_pins = [IN1, IN2, IN3, IN4, ENA, ENB]
 for pin in motor_pins:

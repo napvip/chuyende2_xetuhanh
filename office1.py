@@ -105,7 +105,7 @@ try:
                 cv2.putText(frame, label_name, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
         if stop_detected and ("stop" not in labels_seen) and (time.time() - last_stop_time > resume_after):
-            print("✅ Không còn biển STOP - Tiếp tục chạy thẳng")
+            print("Không còn biển STOP - Tiếp tục chạy thẳng")
             forward()
             current_mode = "forward"
             stop_detected = False
@@ -115,7 +115,7 @@ try:
             break
 
 except KeyboardInterrupt:
-    print("⛔ Dừng chương trình")
+    print("Dừng chương trình")
 
 # --- DỌN DẸP ---
 picam2.stop()

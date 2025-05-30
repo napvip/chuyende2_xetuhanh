@@ -108,8 +108,7 @@ try:
             current_mode = "forward"
 
         frame = picam2.capture_array()
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR)
-
+        
         results = model.predict(source=frame, conf=0.5, iou=0.45, stream=True, verbose=False)
 
         for result in results:

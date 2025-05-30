@@ -141,12 +141,22 @@ try:
         
         # Hiển thị trạng thái trên frame
         status_text = "STOPPED" if is_stopped else "RUNNING"
-        status_color = (0, 0, 255) if is_stopped else (0, 255, 0)
-        cv2.putText(frame, f"Status: {status_text}", (10, 30), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 1, status_color, 2)
+        status_color = (0, 255, 0) if is_stopped else (255, 0, 0)  # RGB thay vì BGR
+        
+        # Tạo bản sao để hiển thị (để không ảnh hưởng đến dữ liệu gửi đến model)
+        display_frame = frame.copy()
+        
+        # Chuyển sang BGR chỉ để hiển thị bằng OpenCV
+        display_frame = cv2.cvtColor(display_frame, cv2.COLOR_RGB2BGR)
+        
+        # Vẽ text trạng thái lên frame hiển thị
+        cv2.putText(display_frame, f"Status: {status_text}", (10, 30), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) if is_stopped else (0, 255, 0), 2)
+        cv2.putText(display_frame, "Mode: RGB", (10, 60), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
         
         # Hiển thị frame
-        cv2.imshow("Traffic Sign Detection", frame)
+        cv2.imshow("Traffic Sign Detection", display_frame)
         
         # Nhấn 'q' để thoát, 'r' để reset và chạy lại
         key = cv2.waitKey(1) & 0xFF
